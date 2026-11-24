@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Favor delivery route</title>
+<style>*{box-sizing:border-box}body{max-width:640px;margin:auto;padding:24px 18px 60px;background:#f4f6f3;color:#172f29;font:16px/1.5 "DM Sans",system-ui}h1{line-height:1.1;font-size:36px;margin:12px 0}section{background:white;border:1px solid #ced9d1;border-radius:14px;padding:18px;margin:16px 0}h2{font-size:20px;margin:0 0 10px}label{display:block;font-weight:650;margin-top:10px}input{font:inherit;width:100%;padding:11px;border:1px solid #96aba0;border-radius:7px}button,a.action{display:inline-block;background:#075941;color:white;font:inherit;font-weight:650;padding:12px 18px;border:0;border-radius:8px;margin:12px 0;text-decoration:none;cursor:pointer}small{display:block}pre{white-space:pre-wrap}img{max-width:100%;max-height:480px}button:disabled{opacity:.55}</style>
+<h1>Favor delivery route</h1><p>Start at your H-E-B and return there after your last delivery.</p>
+<section><h2>Favor screenshots</h2><input id="photos" type="file" accept="image/*" multiple aria-label="Choose Favor screenshots"><p id="scan" role="status"></p><details><summary>Inspect screenshots and detected text</summary><div id="preview"></div><pre id="raw"></pre></details></section>
+<section><h2>Confirm your addresses</h2><small>Check the store against the pickup pin. Include city and state for every stop. Select a detected address or type one.</small><datalist id="choices"></datalist><form id="form"><div id="fields"></div><button type="button" id="add">Add drop-off</button><p><small>Address lookup uses Esri. Road-time estimates use OSRM with ordinary driving speeds. Screenshots are read in your browser.</small></p><button id="build">Find quickest order</button></form><div id="status" role="status"></div><div id="result"></div></section>
+<script>
+const el=id=>document.getElementById(id);
+const inputs=[];
+function addField(value=''){
+ const pickup=inputs.length===0;
+ const row=document.createElement('div'), label=document.createElement('label'), input=document.createElement('input');
+ label.textContent=pickup?'H-E-B pickup':'Drop-off';input.required=true;input.setAttribute('list','choices');input.placeholder='Street address, city, TX';input.value=value;
+ label.append(input);row.append(label);el('fields').append(row);inputs.push(input);input.oninput=reset;
+ if(!pickup){const remove=document.createElement('button');remove.type='button';remove.textContent='Remove drop-off';remove.onclick=()=>{inputs.splice(inputs.indexOf(input),1);row.remove();if(inputs.length===1)addField();reset()};row.append(remove)}
+}
+addField();addField();el('add').onclick=()=>{addField();reset()};
+let ticket=0;
+function reset(){ticket++;el('result').replaceChildren();el('status').textContent='';el('build').disabled=false}
+inputs.forEach(input=>input.oninput=reset);
+async function ocr(){if(!window.Tesseract)await new Promise((ok,fail)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';s.onload=ok;s.onerror=fail;document.head.append(s)});return Tesseract.createWorker('eng')}
+el('photos').onchange=async function(){
+ const files=[...this.files];if(!files.length)return;reset();this.disabled=true;el('preview').replaceChildren();el('raw').textContent='';el('choices').replaceChildren();while(inputs.length>1)inputs.pop().closest('label').parentNode.remove();inputs[0].value='';addField();let worker;
+ for(const file of files){const img=document.createElement('img');img.src=URL.createObjectURL(file);img.alt=file.name;img.onload=()=>URL.revokeObjectURL(img.src);el('preview').append(img)}
+ try{el('scan').textContent='Loading text recognition…';worker=await ocr();const candidates=new Set(),stores=new Set();
+ for(const [i,file] of files.entries()){el('scan').textContent='Reading screenshot '+(i+1)+' of '+files.length+'…';const {data}=await worker.recognize(file);el('raw').textContent+=data.text+'\n';const lines=data.text.split(/\n/).map(x=>x.trim()).filter(Boolean);
+ lines.forEach((line,j)=>{const match=line.match(/\b\d{1,6}\s+[A-Za-z0-9][\w .’'#-]*?\b(?:road|rd|street|st|drive|dr|lane|ln|avenue|ave|court|ct|circle|cir|boulevard|blvd|trail|trl|way|parkway|pkwy|loop|pass|cove|cv|terrace|ter|highway|hwy|place|pl)\b.*$/i);if(!match)return;let address=match[0].replace(/\s+\d+\s+items?\b.*$/i,'').trim();if(!/\bTX\b/i.test(address)&&/^[a-z .'-]+,?\s+(?:TX|Texas)\b/i.test(lines[j+1]||''))address+=', '+lines[j+1];candidates.add(address);if(/h\s*[-–]?\s*e\s*[-–]?\s*b\b/i.test((lines[j-1]||'')+' '+line))stores.add(address)})}
+ for(const a of candidates){const opt=document.createElement('option');opt.value=a;el('choices').append(opt)}
+ if(!stores.size && /Greenlawn\s+Crossing/i.test(el('raw').textContent.replace(/\s+/g,' ')))inputs[0].value='603 Louis Henna Blvd, Round Rock, TX 78664';
+ if(stores.size===1)inputs[0].value=[...stores][0];const drops=[...candidates].filter(a=>!stores.has(a));drops.forEach((a,i)=>{if(i===0)inputs[1].value=a;else addField(a)});
+ el('scan').textContent='Read '+files.length+' screenshot(s). Check each address below.'}
+ catch{el('scan').textContent='Text recognition failed. Inspect the screenshots and enter the addresses below.'}
+ finally{this.disabled=false;if(worker)await worker.terminate()}
+};
+async function json(url){const r=await fetch(url,{signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error('Routing services are unavailable. Try again.');return r.json()}
+async function locate(value){const url=new URL('https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates');url.hostname='geocode.arcgis.com';url.search=new URLSearchParams({SingleLine:value,sourceCountry:'USA',outFields:'Addr_type',maxLocations:'1',f:'json'});const data=await json(url),c=data.candidates?.[0];if(!c||c.score<90||!['PointAddress','StreetAddress','Subaddress','POI'].includes(c.attributes.Addr_type))throw Error('Could not verify '+value+'. Check the street number, city and ZIP.');return c}
+function bestOrder(matrix){let best=null,time=Infinity;function visit(path,left,total){if(!left.length){const back=matrix[path.at(-1)][0];if(Number.isFinite(back)&&total+back<time){time=total+back;best=[...path,0]}return}for(const n of left){const leg=matrix[path.at(-1)][n];if(Number.isFinite(leg))visit([...path,n],left.filter(i=>i!==n),total+leg)}}const stops=matrix.slice(1).map((_,i)=>i+1);
+ if(stops.length>8){const path=[0],left=new Set(stops);let total=0;while(left.size){const from=path.at(-1);const next=[...left].filter(i=>Number.isFinite(matrix[from][i])).sort((a,b)=>matrix[from][a]-matrix[from][b])[0];if(next===undefined)return {best:null};total+=matrix[from][next];path.push(next);left.delete(next)}const back=matrix[path.at(-1)][0];return Number.isFinite(back)?{best:[...path,0],time:total+back}:{best:null}}
+ visit([0],stops,0);return {best,time}}
+el('form').onsubmit=async e=>{e.preventDefault();reset();const id=ticket;el('build').disabled=true;const values=inputs.map(x=>x.value.trim());
+ try{el('status').textContent='Matching addresses and planning your delivery order…';const places=await Promise.all(values.map(locate));const coords=places.map(p=>p.location.x+','+p.location.y).join(';');const matrix=await json('https://router.project-osrm.org/table/v1/driving/'+coords+'?annotations=duration');if(!matrix.durations)throw Error('Road times unavailable. Try again.');const {best,time}=bestOrder(matrix.durations);if(!best)throw Error('No connected driving route found. Check the addresses.');if(ticket!==id)return;
+ const links=[];for(let start=0;start<best.length-1;start+=4){
+ const leg=best.slice(start,start+5),url=new URL('https://www.google.com/maps/dir/');
+ const params=new URLSearchParams({api:'1',origin:places[leg[0]].address,destination:places[leg.at(-1)].address,travelmode:'driving'});
+ if(leg.length>2)params.set('waypoints',leg.slice(1,-1).map(i=>places[i].address).join('|'));url.search=params;
+ const a=document.createElement('a');a.href=url;a.className='action';a.textContent=best.length<=5?'Open route in Google Maps':'Open stops '+(start+1)+'–'+(start+leg.length-1);links.push(a,document.createElement('br'))}
+ const list=document.createElement('ol');list.start=0;best.forEach((i,index)=>{const li=document.createElement('li');li.textContent=(i?'':index?'Return · ':'Pickup · ')+places[i].address;list.append(li)});el('status').textContent='Estimated driving time: '+Math.round(time/60)+' min before traffic and deliveries. Check the matched locations.';if(values.length>9)el('status').textContent+=' Large batch ordered by nearest estimated drive time.';el('result').append(list,...links)}
+ catch(err){if(ticket===id)el('status').textContent=err.message||'Check your connection and try again.'}finally{if(ticket===id)el('build').disabled=false}};
+</script></html>

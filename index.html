@@ -1,83 +1,1041 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Favor delivery route</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>.stop-map{height:340px;margin:12px 0}.leaflet-container img{max-height:none}.customer{padding-top:8px;border-top:1px solid #ced9d1}*{box-sizing:border-box}body{max-width:640px;margin:auto;padding:24px 18px 60px;background:#f4f6f3;color:#172f29;font:16px/1.5 "DM Sans",system-ui}h1{line-height:1.1;font-size:36px;margin:12px 0}section{background:white;border:1px solid #ced9d1;border-radius:14px;padding:18px;margin:16px 0}h2{font-size:20px;margin:0 0 10px}label{display:block;font-weight:650;margin-top:10px}input{font:inherit;width:100%;padding:11px;border:1px solid #96aba0;border-radius:7px}button,a.action{display:inline-block;background:#075941;color:white;font:inherit;font-weight:650;padding:12px 18px;border:0;border-radius:8px;margin:12px 0;text-decoration:none;cursor:pointer}small{display:block}pre{white-space:pre-wrap}img{max-width:100%;max-height:480px}button:disabled{opacity:.55}</style>
-<h1>Favor delivery route</h1><p>Start at your H-E-B and return there after your last delivery.</p>
-<section><h2>Favor screenshots</h2><input id="photos" type="file" accept="image/*" multiple aria-label="Choose Favor screenshots"><p id="scan" role="status"></p><details><summary>Inspect screenshots and detected text</summary><div id="preview"></div><pre id="raw"></pre></details></section>
-<section><h2>Confirm your addresses</h2><small>Check the store against the pickup pin. Include city and state for every stop. Select a detected address or type one.</small><datalist id="choices"></datalist><form id="form"><div id="fields"></div><button type="button" id="add">Add drop-off</button><p><small>Address lookup uses Esri. Road-time estimates use OSRM with ordinary driving speeds. Screenshots are read in your browser.</small></p><button id="build">Find quickest order</button></form><div id="status" role="status"></div><div id="result"></div></section>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Limits where this page can load code from and send data to. If you add a new service, add its address here too. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net blob:; worker-src blob:; style-src 'unsafe-inline' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net; img-src 'self' data: blob: https://tile.openstreetmap.org https://cdn.jsdelivr.net; connect-src https://geocode.arcgis.com https://router.project-osrm.org https://cdn.jsdelivr.net data: blob:; base-uri 'none'; form-action 'none'">
+<!-- OpenStreetMap's tile servers need to see which site is asking, so do not change this to no-referrer. -->
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#075941">
+<title>Favor delivery route</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<style>
+@font-face{
+  font-family:"Overpass";font-style:normal;font-weight:100 900;font-display:swap;
+  src:url("https://cdn.jsdelivr.net/npm/@fontsource-variable/overpass@5.3.0/files/overpass-latin-wght-normal.woff2") format("woff2");
+}
+:root{
+  --bg:#F1F4F0; --surface:#FFFFFF; --ink:#15221E; --muted:#4D5F57; --line:#C8D3CC;
+  --green:#075941; --on-green:#FFFFFF; --accent:#075941;
+  --field:#FFFFFF; --field-line:#8A9E95;
+  --caution:#FFDD6B; --on-caution:#352A00;
+  --stop:#A3241A; --stop-bg:#FCEDEA;
+  --done:#5A6962;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0E1412; --surface:#17201C; --ink:#E8EFEA; --muted:#A5B6AD; --line:#33423B;
+    --green:#0A694C; --on-green:#FFFFFF; --accent:#7CDDB5;
+    --field:#0E1412; --field-line:#62766D;
+    --caution:#E6C04A; --on-caution:#2A2100;
+    --stop:#FFA398; --stop-bg:#3A1A16;
+    --done:#8A9B93;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0 auto;max-width:600px;
+  padding:calc(20px + env(safe-area-inset-top,0px)) 16px calc(112px + env(safe-area-inset-bottom,0px));
+  background:var(--bg);color:var(--ink);
+  font:17px/1.45 "Overpass",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-variant-numeric:tabular-nums;
+}
+h1{font-size:32px;line-height:1.08;font-weight:800;letter-spacing:-.01em;margin:8px 0 8px}
+h2{font-size:21px;line-height:1.2;font-weight:750;margin:0 0 12px;display:flex;align-items:center;gap:10px}
+h2:focus{outline:none}
+p{margin:0 0 12px}
+.lede{color:var(--muted);max-width:34em}
+.fine{font-size:14.5px;line-height:1.4;color:var(--muted)}
+a{color:var(--accent)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* The three parts of the job, in the order a driver does them. */
+.step{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 16px;margin:16px 0}
+.step-num{flex:none;width:30px;height:30px;border-radius:50%;background:var(--green);color:var(--on-green);
+  font-size:16px;font-weight:800;display:grid;place-items:center;padding-top:2px}
+
+.banner{background:var(--caution);color:var(--on-caution);border-radius:10px;padding:10px 14px;font-weight:650;margin:12px 0}
+
+/* Buttons. One filled style for the main action, an outline for everything else. */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;
+  padding:11px 18px 9px;border-radius:10px;border:2px solid var(--green);
+  background:var(--green);color:var(--on-green);font:inherit;font-weight:700;text-decoration:none;cursor:pointer;
+}
+.btn.quiet{background:transparent;color:var(--accent);border-color:var(--field-line)}
+.btn.small{min-height:40px;padding:7px 12px 5px;font-size:15px}
+.btn.remove{border-color:transparent;color:var(--stop);padding-left:8px;padding-right:8px}
+.btn:disabled{opacity:.6;cursor:default}
+.btn[aria-pressed="true"]{background:transparent;border-color:var(--done);color:var(--done)}
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0}
+
+/* File picker: the real input is covered by a full-size label so the whole button is tappable. */
+.pick{position:relative;display:inline-flex}
+.pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.pick:focus-within .btn{outline:3px solid var(--accent);outline-offset:2px}
+.pick:has(input:disabled) .btn{opacity:.6}
+#scan{margin:12px 0 0;font-weight:600}
+#scan:empty{display:none}
+details{margin-top:12px}
+summary{cursor:pointer;color:var(--accent);font-weight:650;padding:6px 0}
+#preview img{max-width:100%;max-height:420px;display:block;margin:8px 0;border:1px solid var(--line);border-radius:8px}
+#raw{white-space:pre-wrap;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;color:var(--muted);margin:8px 0 0}
+
+/* Address rows */
+label{display:block;font-weight:700;margin:12px 0 4px}
+input[type=text]{
+  font:inherit;width:100%;min-height:48px;padding:11px 12px 9px;border:1.5px solid var(--field-line);border-radius:9px;
+  background:var(--field);color:var(--ink);
+}
+input[type=text]::placeholder{color:var(--muted);opacity:.75}
+input[aria-invalid="true"]{border-color:var(--stop);border-width:2px}
+.stop-row{padding:2px 0 14px}
+.stop-row.drop{border-top:1px solid var(--line);margin-top:6px;padding-top:6px}
+.row-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.row-head .row-title{font-weight:800}
+.note{font-size:14.5px;line-height:1.35;margin:6px 0 0;color:var(--muted)}
+.note:empty{display:none}
+.note.error{color:var(--stop);font-weight:650}
+.suggest{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:8px}
+.suggest .btn{text-align:left;justify-content:flex-start}
+.name-hint{display:none;font-size:14px;font-weight:650;background:var(--caution);color:var(--on-caution);border-radius:6px;padding:3px 8px 1px;margin:6px 0 0;width:fit-content}
+.suggested .name-hint{display:block}
+.check{display:flex;align-items:flex-start;gap:10px;font-weight:600;margin:12px 0 0;cursor:pointer}
+.check input{width:22px;height:22px;flex:none;margin:1px 0 0;accent-color:var(--green)}
+#status{font-weight:650;margin:14px 0 0}
+#status:empty{display:none}
+#status.error{color:var(--stop)}
+
+/* The result, styled like a highway guide sign: the one loud thing on the page. */
+.sign{background:var(--green);color:var(--on-green);border-radius:14px;padding:5px;margin:0 0 14px}
+.sign-inner{border:2px solid rgba(255,255,255,.9);border-radius:10px;padding:14px 16px 12px}
+.sign-time{font-size:44px;line-height:1;font-weight:800;letter-spacing:-.01em;margin:0 0 6px}
+.sign-sub{margin:0;font-weight:600;line-height:1.35}
+.tweak{background:var(--caution);color:var(--on-caution);border-radius:10px;padding:10px 14px;margin:0 0 14px;font-weight:650;
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.tweak .btn{background:transparent;color:inherit;border-color:currentColor}
+
+/* Route strip: a line down the left with a numbered marker at each stop. */
+.strip{list-style:none;margin:0;padding:0}
+.strip li{position:relative;padding:0 0 18px 48px}
+.strip li::before{content:"";position:absolute;left:16px;top:6px;bottom:-6px;width:4px;background:var(--green);border-radius:2px}
+.strip li:last-child::before{display:none}
+.marker{position:absolute;left:0;top:0;width:36px;height:36px;border-radius:50%;background:var(--green);color:var(--on-green);
+  border:3px solid var(--surface);box-shadow:0 0 0 2px var(--green);font-weight:800;display:grid;place-items:center;padding-top:2px}
+.marker.store{border-radius:8px;font-size:15px}
+.stop-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.stop-name{font-weight:800;font-size:18.5px;line-height:1.25;margin:4px 0 1px;overflow-wrap:anywhere}
+.moves{display:flex;gap:6px;flex:none}
+.stop-addr{margin:0;overflow-wrap:anywhere}
+.stop-leg{margin:2px 0 0;color:var(--muted);font-size:15px}
+.stop-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.move{min-width:44px;min-height:40px;padding:6px 10px 4px;font-size:18px;line-height:1}
+.strip li.is-next .marker{box-shadow:0 0 0 2px var(--green),0 0 0 6px var(--caution)}
+.strip li.is-done .marker{background:var(--done);box-shadow:0 0 0 2px var(--done)}
+.strip li.is-done .stop-name,.strip li.is-done .stop-addr{text-decoration:line-through;color:var(--done)}
+
+.links{border-top:1px solid var(--line);margin-top:6px;padding-top:14px}
+.links h3{font-size:17px;margin:0 0 4px}
+.links .btn-row{margin-top:8px}
+.stop-map{height:340px;margin:16px 0 0;border-radius:10px;border:1px solid var(--line);z-index:0}
+.stop-map:empty{display:none}
+.leaflet-container{font:inherit;font-size:13px}
+.leaflet-tooltip{font-weight:700}
+.pin-done{opacity:.55}
+
+footer{margin:22px 4px 0}
+
+/* Thumb-reach action bar */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:1000;background:var(--surface);border-top:1px solid var(--line);
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
+.bar-inner{max-width:568px;margin:0 auto;display:flex}
+.bar .btn{flex:1;min-height:54px;font-size:18px;text-align:center}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:no-preference){.btn{transition:background-color .12s,opacity .12s}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Favor delivery route</h1>
+  <p class="lede">Read the addresses off your Favor screenshots, check them, and get the quickest order to drive them from your H-E-B.</p>
+</header>
+<p id="offline" class="banner" role="status" hidden>You’re offline. Address lookup and drive times need a connection.</p>
+
+<main>
+<section class="step" aria-labelledby="h-shots">
+  <h2 id="h-shots"><span class="step-num" aria-hidden="true">1</span>Add your Favor screenshots</h2>
+  <p class="fine">Optional. Skip this and type the addresses below if you prefer.</p>
+  <span class="pick">
+    <span class="btn quiet" aria-hidden="true">Choose screenshots</span>
+    <input id="photos" type="file" accept="image/*" multiple aria-label="Choose Favor screenshots">
+  </span>
+  <p id="scan" role="status"></p>
+  <details id="inspect" hidden>
+    <summary>Show the screenshots and the text that was read</summary>
+    <div id="preview"></div>
+    <pre id="raw"></pre>
+  </details>
+</section>
+
+<section class="step" aria-labelledby="h-addr">
+  <h2 id="h-addr"><span class="step-num" aria-hidden="true">2</span>Check the addresses</h2>
+  <p class="fine">Include the city and state for every stop. Pick an address read from a screenshot or type one.</p>
+  <datalist id="choices"></datalist>
+  <form id="form" novalidate>
+    <div id="fields"></div>
+    <div class="btn-row">
+      <button type="button" class="btn quiet" id="add">Add a drop-off</button>
+      <button type="button" class="btn quiet remove" id="clear">Clear drop-offs</button>
+    </div>
+    <label class="check"><input type="checkbox" id="roundtrip" checked> <span>Return to H-E-B after the last delivery</span></label>
+  </form>
+  <p id="status" role="status"></p>
+</section>
+
+<section class="step" id="route" aria-labelledby="h-route" hidden>
+  <h2 id="h-route" tabindex="-1"><span class="step-num" aria-hidden="true">3</span>Your route</h2>
+  <div class="sign"><div class="sign-inner"><p class="sign-time" id="sign-time"></p><p class="sign-sub" id="sign-sub"></p></div></div>
+  <div class="tweak" id="tweak" hidden></div>
+  <ol class="strip" id="stops"></ol>
+  <div class="links">
+    <h3>Open in Google Maps</h3>
+    <p class="fine" id="links-note"></p>
+    <div class="btn-row" id="links"></div>
+    <div class="btn-row"><button type="button" class="btn quiet" id="share">Share route links</button></div>
+  </div>
+  <div id="map" class="stop-map" role="region" aria-label="Map of delivery stops"></div>
+</section>
+</main>
+
+<footer>
+  <p class="fine"><strong>What leaves this phone.</strong> Screenshots and customer names stay here. Each address you confirm goes to Esri to find it on the map. The map points go to the OSRM demo server for drive times. The addresses go to Google Maps when you open or share the route. Nothing is saved, apart from your pickup store if you leave that box ticked.</p>
+  <p class="fine">Address lookup by Esri. Drive times and route line by <a href="https://project-osrm.org/" rel="noopener">OSRM</a>, at ordinary driving speeds with no live traffic, using data © <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a> contributors (ODbL). Text reading by Tesseract.js, in your browser.</p>
+</footer>
+
+<div class="bar"><div class="bar-inner">
+  <button class="btn" id="build" type="submit" form="form">Find quickest order</button>
+  <a class="btn" id="next" target="_blank" rel="noopener" hidden></a>
+</div></div>
+
 <script>
-const el=id=>document.getElementById(id);
-const inputs=[];
-const customerFields=new WeakMap();
-let stopMap;
-function addField(value=''){
- const pickup=inputs.length===0;
- const row=document.createElement('div'), label=document.createElement('label'), input=document.createElement('input');
- label.textContent=pickup?'H-E-B pickup':'Drop-off';input.required=true;input.setAttribute('list','choices');input.placeholder='Street address, city, TX';input.value=value;
- label.append(input);row.append(label);el('fields').append(row);inputs.push(input);input.oninput=reset;
- if(!pickup){
- const customer=document.createElement('input'),nameLabel=document.createElement('label');
- nameLabel.textContent='Customer name (optional)';customer.placeholder='Name shown in Favor';
- nameLabel.append(customer);row.prepend(nameLabel);row.className='customer';customerFields.set(input,customer);customer.oninput=reset;
- const remove=document.createElement('button');remove.type='button';remove.textContent='Remove drop-off';remove.onclick=()=>{inputs.splice(inputs.indexOf(input),1);row.remove();if(inputs.length===1)addField();reset()};row.append(remove)}
-}
-addField();addField();el('add').onclick=()=>{addField();reset()};
-let ticket=0;
-function reset(){if(stopMap){stopMap.remove();stopMap=null}ticket++;el('result').replaceChildren();el('status').textContent='';el('build').disabled=false}
-inputs.forEach(input=>input.oninput=reset);
-async function ocr(){if(!window.Tesseract)await new Promise((ok,fail)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';s.onload=ok;s.onerror=fail;document.head.append(s)});return Tesseract.createWorker('eng')}
-el('photos').onchange=async function(){
- const files=[...this.files];if(!files.length)return;reset();this.disabled=true;el('preview').replaceChildren();el('raw').textContent='';el('choices').replaceChildren();while(inputs.length>1)inputs.pop().closest('.customer').remove();inputs[0].value='';addField();let worker;
- for(const file of files){const img=document.createElement('img');img.src=URL.createObjectURL(file);img.alt=file.name;img.onload=()=>URL.revokeObjectURL(img.src);el('preview').append(img)}
- try{el('scan').textContent='Loading text recognition…';worker=await ocr();const candidates=new Set(),stores=new Set(),customers=new Map();
- for(const [i,file] of files.entries()){el('scan').textContent='Reading screenshot '+(i+1)+' of '+files.length+'…';const {data}=await worker.recognize(file);el('raw').textContent+=data.text+'\n';const lines=data.text.split(/\n/).map(x=>x.trim()).filter(Boolean);
- lines.forEach((line,j)=>{const match=line.match(/\b\d{1,6}\s+[A-Za-z0-9][\w .’'#-]*?\b(?:road|rd|street|st|drive|dr|lane|ln|avenue|ave|court|ct|circle|cir|boulevard|blvd|trail|trl|way|parkway|pkwy|loop|pass|cove|cv|terrace|ter|highway|hwy|place|pl)\b.*$/i);if(!match)return;let address=match[0].replace(/\s+\d+\s+items?\b.*$/i,'').trim();if(!/\bTX\b/i.test(address)&&/^[a-z .'-]+,?\s+(?:TX|Texas)\b/i.test(lines[j+1]||''))address+=', '+lines[j+1];candidates.add(address);
- const nearby=[line.slice(0,match.index),lines[j-1]||'',/^order\s+\d+/i.test(lines[j-2]||'')?'Customer: '+lines[j-1]:''];
- for(const field of nearby){
- const found=field.trim().match(/^(?:customer(?: name)?|deliver to|recipient|order\s+\d+\s*[-:–])\s*[:–-]?\s*([\p{L}][\p{L} .’'-]{0,59}?)\s*[,–:-]?$/iu);
- if(found&&!/^(?:order|deliver|shop|address)\b/i.test(found[1])){
- if(!customers.has(address))customers.set(address,new Set());customers.get(address).add(found[1].trim());break}
- }
- if(/h\s*[-–]?\s*e\s*[-–]?\s*b\b/i.test((lines[j-1]||'')+' '+line))stores.add(address)})}
- for(const a of candidates){const opt=document.createElement('option');opt.value=a;el('choices').append(opt)}
- if(!stores.size && /Greenlawn\s+Crossing/i.test(el('raw').textContent.replace(/\s+/g,' ')))inputs[0].value='603 Louis Henna Blvd, Round Rock, TX 78664';
- if(stores.size===1)inputs[0].value=[...stores][0];const drops=[...candidates].filter(a=>!stores.has(a));let count=0;for(const address of drops){for(const name of customers.get(address)||['']){if(count++)addField();const field=inputs.at(-1);field.value=address;customerFields.get(field).value=name}}
- el('scan').textContent='Read '+files.length+' screenshot(s). Check each address below.'}
- catch{el('scan').textContent='Text recognition failed. Inspect the screenshots and enter the addresses below.'}
- finally{this.disabled=false;if(worker)await worker.terminate()}
+(() => {
+'use strict';
+
+/* ---------- Settings you may want to change ---------- */
+const GEOCODE_URL = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates';
+const OSRM_URL = 'https://router.project-osrm.org';
+const TESSERACT = {
+  src: 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js',
+  integrity: 'sha384-2BQ3U3OdKOb0Uczxqr41I9UvZkzr4V9Hv8uSzMMZAlmhsFClvdZX5wi5fDCzG+tM'
 };
-async function json(url){const r=await fetch(url,{signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error('Routing services are unavailable. Try again.');return r.json()}
-async function locate(value){const url=new URL('https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates');url.hostname='geocode.arcgis.com';url.search=new URLSearchParams({SingleLine:value,sourceCountry:'USA',outFields:'Addr_type',maxLocations:'1',f:'json'});const data=await json(url),c=data.candidates?.[0];if(!c||c.score<90||!['PointAddress','StreetAddress','Subaddress','POI'].includes(c.attributes.Addr_type))throw Error('Could not verify '+value+'. Check the street number, city and ZIP.');return c}
-function bestOrder(matrix){let best=null,time=Infinity;function visit(path,left,total){if(!left.length){const back=matrix[path.at(-1)][0];if(Number.isFinite(back)&&total+back<time){time=total+back;best=[...path,0]}return}for(const n of left){const leg=matrix[path.at(-1)][n];if(Number.isFinite(leg))visit([...path,n],left.filter(i=>i!==n),total+leg)}}const stops=matrix.slice(1).map((_,i)=>i+1);
- if(stops.length>8){const path=[0],left=new Set(stops);let total=0;while(left.size){const from=path.at(-1);const next=[...left].filter(i=>Number.isFinite(matrix[from][i])).sort((a,b)=>matrix[from][a]-matrix[from][b])[0];if(next===undefined)return {best:null};total+=matrix[from][next];path.push(next);left.delete(next)}const back=matrix[path.at(-1)][0];return Number.isFinite(back)?{best:[...path,0],time:total+back}:{best:null}}
- visit([0],stops,0);return {best,time}}
-function showStopMap(places,order,names){
- if(!window.L)return;
- const box=document.createElement('div');box.className='stop-map';box.setAttribute('aria-label','Delivery stop map');el('result').append(box);
- stopMap=L.map(box);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',maxZoom:19}).addTo(stopMap);
- const pins=new Map();
- order.slice(0,-1).forEach((id,position)=>{
- const place=places[id],point=[place.location.y,place.location.x],key=point.join(',');
- if(!pins.has(key))pins.set(key,{point,labels:[],details:[]});
- const pin=pins.get(key),label=id?position+'. '+(names[id]||'Drop-off'):'H-E-B · start / return';
- pin.labels.push(label);pin.details.push(label+' · '+place.address);
- });
- const bounds=[];for(const pin of pins.values()){
- const label=document.createElement('span'),details=document.createElement('span');label.textContent=pin.labels.join(' / ');details.textContent=pin.details.join(' | ');
- L.circleMarker(pin.point,{radius:7,color:'#075941',fillOpacity:1}).addTo(stopMap).bindTooltip(label,{permanent:true,direction:'top'}).bindPopup(details);bounds.push(pin.point);
- }
- stopMap.fitBounds(bounds,{padding:[65,50],maxZoom:16});
+// Favor often shows a store by name with no street address. List the stores you run from here:
+// `name` is the text to look for in a screenshot, `address` is what goes in the pickup box.
+const KNOWN_STORES = [
+  { name: /Greenlawn\s+Crossing/i, address: '603 Louis Henna Blvd, Round Rock, TX 78664' }
+];
+const EXACT_LIMIT = 15;          // up to this many drop-offs, every possible order is compared
+const WAYPOINTS_PER_LINK = 3;    // Google Maps keeps 3 in-between stops in a phone browser
+const WAYPOINTS_IN_APP = 9;      // and 9 in the Google Maps app
+const MIN_SCORE = 90;            // Esri match score needed to accept an address
+const PICKUP_KEY = 'routeme.pickup';
+const OSRM_GAP_MS = 1100;        // the OSRM demo server asks for no more than 1 request a second
+const TIMEOUT_MS = 25000;
+
+/* ---------- Logic with no page access (covered by tests) ---------- */
+/* PURE:START */
+const SUFFIX = 'road|rd|street|st|drive|dr|lane|ln|avenue|ave|court|ct|circle|cir|boulevard|blvd|trail|trl|way|parkway|pkwy|loop|pass|cove|cv|terrace|ter|highway|hwy|place|pl';
+// "1234 Oak Hollow Dr ..." : a number, some words, a street type, then whatever follows on the line.
+const STREET_RE = new RegExp("\\d{1,6}\\s+[A-Za-z0-9][\\w .’'#-]*?\\b(?:" + SUFFIX + ")\\b.*$", 'iy');
+// "1200 FM 620 N", "4500 E Hwy 290", "800 County Road 110", "16000 I-35": Texas numbered roads with no street type.
+const ROUTE_RE = /\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:(?:FM|RM|RR|CR|SH|IH|US|Hwy|Highway|County\s+R(?:oa)?d|Farm\s+to\s+Market(?:\s+R(?:oa)?d)?|Ranch\s+(?:to\s+Market\s+)?R(?:oa)?d)[\s-]*|I-\s?)\d{1,4}\b.*$/iy;
+// "3 items on the way" is not an address.
+const NOT_ADDRESS = /^\d+\s+(?:items?|orders?|mins?|minutes?|mi|miles?|stops?|bags?|hrs?|hours?|deliver(?:y|ies))\b/i;
+const NAME_RE = /^(?:customer(?: name)?|deliver to|recipient|order\s+\d+\s*[-:–])\s*[:–-]?\s*([\p{L}][\p{L} .’'-]{0,59}?)\s*[,–:-]?$/iu;
+const STORE_RE = /h\s*[-–]?\s*e\s*[-–]?\s*b\b/i;
+
+function findAddress(line) {
+  const starts = /\b\d{1,6}\s+/g;
+  let s;
+  while ((s = starts.exec(line))) {
+    for (const re of [STREET_RE, ROUTE_RE]) {
+      re.lastIndex = s.index;
+      const m = re.exec(line);
+      if (m && !NOT_ADDRESS.test(m[0])) return { index: s.index, text: m[0] };
+    }
+  }
+  return null;
 }
-el('form').onsubmit=async e=>{e.preventDefault();reset();const id=ticket;el('build').disabled=true;const values=inputs.map(x=>x.value.trim());
- try{el('status').textContent='Matching addresses and planning your delivery order…';const places=await Promise.all(values.map(locate));const coords=places.map(p=>p.location.x+','+p.location.y).join(';');const matrix=await json('https://router.project-osrm.org/table/v1/driving/'+coords+'?annotations=duration');if(!matrix.durations)throw Error('Road times unavailable. Try again.');const {best,time}=bestOrder(matrix.durations);if(!best)throw Error('No connected driving route found. Check the addresses.');if(ticket!==id)return;
- const names=inputs.map(field=>customerFields.get(field)?.value.trim()||'');const links=[];for(let start=0;start<best.length-1;start+=4){
- const leg=best.slice(start,start+5),url=new URL('https://www.google.com/maps/dir/');
- const params=new URLSearchParams({api:'1',origin:places[leg[0]].address,destination:places[leg.at(-1)].address,travelmode:'driving'});
- if(leg.length>2)params.set('waypoints',leg.slice(1,-1).map(i=>places[i].address).join('|'));url.search=params;
- const a=document.createElement('a');a.href=url;a.className='action';a.textContent=best.length<=5?'Open route in Google Maps':'Open stops '+(start+1)+'–'+(start+leg.length-1);links.push(a,document.createElement('br'))}
- const list=document.createElement('ol');list.start=0;best.forEach((i,index)=>{const li=document.createElement('li');li.textContent=(i?(names[i]?names[i]+' · ':''):index?'Return · ':'Pickup · ')+places[i].address;list.append(li)});el('status').textContent='Estimated driving time: '+Math.round(time/60)+' min before traffic and deliveries. Check the matched locations.';if(values.length>9)el('status').textContent+=' Large batch ordered by nearest estimated drive time.';el('result').append(...links,list);
- const shareText=links.filter(a=>a.tagName==='A').map(a=>a.href).join('\n');
- const share=document.createElement('button');share.type='button';share.textContent=navigator.share?'Share route':'Copy route links';
- share.onclick=async()=>{try{if(navigator.share)await navigator.share({title:'Favor delivery route',text:shareText});else{await navigator.clipboard.writeText(shareText);share.textContent='Copied'}}catch(err){if(err.name!=='AbortError'){const field=document.createElement('textarea');field.readOnly=true;field.value=shareText;el('result').append(field);field.select()}}};
- el('result').append(share);showStopMap(places,best,names)}
- catch(err){if(ticket===id)el('status').textContent=err.message||'Check your connection and try again.'}finally{if(ticket===id)el('build').disabled=false}};
-</script></html>
+
+function cleanAddress(text) {
+  return text
+    .replace(/\s+\d+\s+items?\b.*$/i, '')
+    .replace(/\s+[·•|]?\s*\d+(?:\.\d+)?\s*(?:mi|miles|mins?)\b.*$/i, '')
+    .replace(/[\s,;·•|]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Adds what one screenshot's text contains to `found` = {addresses:Set, stores:Set, customers:Map(address -> Set of names)}.
+function readScreenshotText(text, found) {
+  const lines = text.split(/\n/).map(x => x.trim()).filter(Boolean);
+  lines.forEach((line, j) => {
+    const hit = findAddress(line);
+    if (!hit) return;
+    let address = cleanAddress(hit.text);
+    if (!address) return;
+    const next = lines[j + 1] || '';
+    if (!/\bTX\b/i.test(address) && /^[a-z .'-]+,?\s+(?:TX|Texas)\b/i.test(next)) address += ', ' + next.replace(/\s+/g, ' ');
+    found.addresses.add(address);
+    const nearby = [line.slice(0, hit.index), lines[j - 1] || '', /^order\s+\d+/i.test(lines[j - 2] || '') ? 'Customer: ' + lines[j - 1] : ''];
+    for (const field of nearby) {
+      const m = field.trim().match(NAME_RE);
+      if (m && !/^(?:order|deliver|shop|address)\b/i.test(m[1])) {
+        if (!found.customers.has(address)) found.customers.set(address, new Set());
+        found.customers.get(address).add(m[1].trim());
+        break;
+      }
+    }
+    if (STORE_RE.test((lines[j - 1] || '') + ' ' + line)) found.stores.add(address);
+  });
+  return found;
+}
+
+function sameText(a, b) {
+  const tidy = s => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return tidy(a) === tidy(b);
+}
+
+// Total seconds for visiting the stops in `order` (a list of matrix row numbers; 0 is the store).
+function tourTime(m, order) {
+  let t = 0;
+  for (let i = 1; i < order.length; i++) t += m[order[i - 1]][order[i]];
+  return t;
+}
+
+// Held-Karp: the true quickest order, by building up the best way to reach every set of stops.
+function exactOrder(m, roundTrip) {
+  const n = m.length - 1;
+  if (n < 1) return null;
+  const FULL = 1 << n;
+  const dp = new Float64Array(FULL * n).fill(Infinity);
+  const from = new Int8Array(FULL * n).fill(-1);
+  for (let j = 0; j < n; j++) dp[(1 << j) * n + j] = m[0][j + 1];
+  for (let S = 1; S < FULL; S++) {
+    for (let j = 0; j < n; j++) {
+      if (!(S >> j & 1)) continue;
+      const v = dp[S * n + j];
+      if (v === Infinity) continue;
+      for (let k = 0; k < n; k++) {
+        if (S >> k & 1) continue;
+        const c = v + m[j + 1][k + 1], at = (S | 1 << k) * n + k;
+        if (c < dp[at]) { dp[at] = c; from[at] = j; }
+      }
+    }
+  }
+  let time = Infinity, last = -1;
+  for (let j = 0; j < n; j++) {
+    const c = dp[(FULL - 1) * n + j] + (roundTrip ? m[j + 1][0] : 0);
+    if (c < time) { time = c; last = j; }
+  }
+  if (last < 0) return null;
+  const path = [];
+  for (let S = FULL - 1, j = last; j >= 0;) {
+    path.push(j + 1);
+    const p = from[S * n + j];
+    S &= ~(1 << j);
+    j = p;
+  }
+  path.push(0);
+  path.reverse();
+  if (roundTrip) path.push(0);
+  return { order: path, time };
+}
+
+function nearestFrom(m, first) {
+  const n = m.length - 1;
+  if (!Number.isFinite(m[0][first])) return null;
+  const left = new Set();
+  for (let i = 1; i <= n; i++) if (i !== first) left.add(i);
+  const path = [0, first];
+  while (left.size) {
+    const here = path[path.length - 1];
+    let pick = -1, best = Infinity;
+    for (const i of left) if (m[here][i] < best) { best = m[here][i]; pick = i; }
+    if (pick < 0) return null;
+    path.push(pick);
+    left.delete(pick);
+  }
+  return path;
+}
+
+// Keeps moving short runs of stops (Or-opt) and reversing stretches (2-opt) while that makes the trip shorter.
+// Every candidate is re-timed in full, so one-way streets (a to b differs from b to a) are handled.
+function improveOrder(m, order, roundTrip) {
+  let best = order.slice(), bestT = tourTime(m, best);
+  const lo = 1, hi = best.length - (roundTrip ? 1 : 0);
+  let improved = true, rounds = 0;
+  while (improved && rounds++ < 100) {
+    improved = false;
+    for (let len = 1; len <= 3; len++) {
+      for (let i = lo; i + len <= hi; i++) {
+        const seg = best.slice(i, i + len), rest = best.slice(0, i).concat(best.slice(i + len));
+        for (let p = lo; p <= hi - len; p++) {
+          if (p === i) continue;
+          const cand = rest.slice(0, p).concat(seg, rest.slice(p)), t = tourTime(m, cand);
+          if (t < bestT - 1e-9) { best = cand; bestT = t; improved = true; }
+        }
+      }
+    }
+    for (let i = lo; i < hi - 1; i++) {
+      for (let j = i + 1; j < hi; j++) {
+        const cand = best.slice(0, i).concat(best.slice(i, j + 1).reverse(), best.slice(j + 1)), t = tourTime(m, cand);
+        if (t < bestT - 1e-9) { best = cand; bestT = t; improved = true; }
+      }
+    }
+  }
+  return { order: best, time: bestT };
+}
+
+// m[i][j] = seconds from stop i to stop j; row 0 is the store. Returns {order, time, exact} or null.
+function quickestOrder(m, roundTrip, exactLimit) {
+  const n = m.length - 1;
+  if (n < 1) return null;
+  if (n <= exactLimit) {
+    const r = exactOrder(m, roundTrip);
+    return r && Number.isFinite(r.time) ? { order: r.order, time: r.time, exact: true } : null;
+  }
+  const starts = [];
+  for (let i = 1; i <= n; i++) starts.push(i);
+  starts.sort((a, b) => m[0][a] - m[0][b]);
+  let best = null;
+  for (const first of starts.slice(0, 12)) {
+    const path = nearestFrom(m, first);
+    if (!path) continue;
+    if (roundTrip) path.push(0);
+    if (!Number.isFinite(tourTime(m, path))) continue;
+    const r = improveOrder(m, path, roundTrip);
+    if (!best || r.time < best.time) best = r;
+  }
+  return best && Number.isFinite(best.time) ? { order: best.order, time: best.time, exact: false } : null;
+}
+
+// Cuts the route into links that each carry at most `per` in-between stops.
+function splitLegs(order, per) {
+  const legs = [];
+  for (let start = 0; start < order.length - 1; start += per + 1) legs.push({ start, nodes: order.slice(start, start + per + 2) });
+  return legs;
+}
+
+function legLabel(order, leg) {
+  const end = leg.start + leg.nodes.length - 1;
+  const home = order[end] === 0;
+  const first = leg.start + 1, last = home ? end - 1 : end;
+  if (last < first) return 'Back to H-E-B';
+  const range = first === last ? 'Stop ' + first : 'Stops ' + first + '–' + last;
+  return home ? range + ', then back to H-E-B' : range;
+}
+
+function mapsRouteUrl(addresses) {
+  const p = new URLSearchParams({ api: '1', origin: addresses[0], destination: addresses[addresses.length - 1], travelmode: 'driving' });
+  if (addresses.length > 2) p.set('waypoints', addresses.slice(1, -1).join('|'));
+  return 'https://www.google.com/maps/dir/?' + p;
+}
+
+function mapsNavigateUrl(address) {
+  return 'https://www.google.com/maps/dir/?' + new URLSearchParams({ api: '1', destination: address, travelmode: 'driving', dir_action: 'navigate' });
+}
+
+function minutesText(seconds) {
+  if (!Number.isFinite(seconds)) return 'time unknown';
+  const min = Math.round(seconds / 60);
+  if (min < 1) return 'under 1 min';
+  if (min < 60) return min + ' min';
+  const h = Math.floor(min / 60), r = min % 60;
+  return h + ' hr' + (r ? ' ' + r + ' min' : '');
+}
+/* PURE:END */
+
+/* ---------- Page ---------- */
+const $ = id => document.getElementById(id);
+const make = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const rows = [];           // rows[0] is the pickup; the rest are drop-offs
+let uid = 0;
+let plan = null;           // the current route, or null
+let run = 0;               // goes up every time the route is thrown away, so late answers are ignored
+let controller = null;     // cancels lookups that are still in flight
+let pickupSource = '';     // '', 'memory', 'screenshot' or 'typed'
+let map = null, mapLayer = null, lineTimer = 0, osrmLast = 0;
+const geoCache = new Map(); // this visit only; never written to storage
+
+function storageGet() { try { return localStorage.getItem(PICKUP_KEY) || ''; } catch { return ''; } }
+function storageSet(v) { try { v ? localStorage.setItem(PICKUP_KEY, v) : localStorage.removeItem(PICKUP_KEY); } catch { /* private mode */ } }
+
+function setStatus(text, isError) { $('status').textContent = text || ''; $('status').className = isError ? 'error' : ''; }
+
+function setNote(row, kind, text, suggestions) {
+  row.note.className = 'note' + (kind === 'error' ? ' error' : '');
+  row.note.replaceChildren();
+  if (text) row.note.append(text);
+  if (kind === 'error') row.address.setAttribute('aria-invalid', 'true'); else row.address.removeAttribute('aria-invalid');
+  if (suggestions && suggestions.length) {
+    const box = make('span', 'suggest');
+    box.append(make('span', '', 'Did you mean:'));
+    for (const s of suggestions) {
+      const b = make('button', 'btn quiet small', s);
+      b.type = 'button';
+      b.onclick = () => { row.address.value = s; setNote(row, '', ''); if (row.kind === 'pickup') pickupSource = 'typed'; row.address.focus(); };
+      box.append(b);
+    }
+    row.note.append(box);
+  }
+}
+
+function addRow(kind, address, name, suggested) {
+  const n = ++uid, wrap = make('div', 'stop-row ' + kind);
+  const row = { kind, wrap, address: make('input'), name: null, note: make('p', 'note') };
+  row.address.type = 'text';
+  row.address.id = 'addr' + n;
+  row.address.setAttribute('list', 'choices');
+  row.address.setAttribute('aria-describedby', 'note' + n);
+  row.address.autocomplete = 'off';
+  row.address.autocapitalize = 'words';
+  row.address.enterKeyHint = 'next';
+  row.address.placeholder = 'Street address, city, TX';
+  row.address.value = address || '';
+  row.address.addEventListener('input', () => {
+    setNote(row, '', '');
+    if (kind === 'pickup') { pickupSource = 'typed'; $('seen-store').hidden = true; }
+    clearPlan();
+  });
+  row.note.id = 'note' + n;
+
+  if (kind === 'drop') {
+    const head = make('div', 'row-head');
+    const remove = make('button', 'btn quiet small remove', 'Remove');
+    remove.type = 'button';
+    remove.onclick = () => {
+      rows.splice(rows.indexOf(row), 1);
+      wrap.remove();
+      if (rows.length === 1) addRow('drop');
+      renumber();
+      clearPlan();
+    };
+    row.title = make('span', 'row-title');
+    head.append(row.title, remove);
+    row.name = make('input');
+    row.name.type = 'text';
+    row.name.id = 'name' + n;
+    row.name.autocomplete = 'off';
+    row.name.autocapitalize = 'words';
+    row.name.placeholder = 'Name shown in Favor';
+    row.name.value = name || '';
+    row.name.addEventListener('input', () => { wrap.classList.remove('suggested'); if (plan) renderPlan(); });
+    row.name.addEventListener('focus', () => wrap.classList.remove('suggested'));
+    const nameLabel = make('label', '', 'Customer name (optional)'); nameLabel.htmlFor = row.name.id;
+    const addrLabel = make('label', '', 'Address'); addrLabel.htmlFor = row.address.id;
+    if (suggested && name) wrap.classList.add('suggested');
+    wrap.append(head, nameLabel, row.name, make('p', 'name-hint', 'Read from the screenshot. Check it.'), addrLabel, row.address, row.note);
+  } else {
+    const label = make('label', '', 'H-E-B pickup'); label.htmlFor = row.address.id;
+    const seen = make('p', 'note'); seen.id = 'seen-store'; seen.hidden = true;
+    const remember = make('label', 'check');
+    const box = make('input'); box.type = 'checkbox'; box.id = 'remember'; box.checked = true;
+    box.onchange = () => { if (!box.checked) storageSet(''); };
+    remember.append(box, make('span', '', 'Remember this store on this phone'));
+    wrap.append(label, row.address, row.note, seen, remember);
+  }
+  $('fields').append(wrap);
+  rows.push(row);
+  renumber();
+  return row;
+}
+
+function renumber() {
+  rows.slice(1).forEach((row, i) => {
+    row.title.textContent = 'Drop-off ' + (i + 1);
+    row.wrap.querySelector('.remove').setAttribute('aria-label', 'Remove drop-off ' + (i + 1));
+  });
+}
+
+function clearPlan() {
+  run++;
+  if (controller) { controller.abort(); controller = null; }
+  clearTimeout(lineTimer);
+  setStatus('');
+  setBusy(false);
+  if (!plan && $('route').hidden) return;
+  plan = null;
+  if (map) { map.remove(); map = null; mapLayer = null; }
+  $('map').replaceChildren();
+  $('route').hidden = true;
+  $('next').hidden = true;
+  $('build').hidden = false;
+}
+
+function setBusy(on) { $('build').disabled = on; $('build').textContent = on ? 'Working…' : 'Find quickest order'; }
+
+/* ---------- Reading screenshots ---------- */
+function loadScript(src, integrity) {
+  return new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = src; s.integrity = integrity; s.crossOrigin = 'anonymous';
+    s.onload = ok; s.onerror = () => fail(Error('script'));
+    document.head.append(s);
+  });
+}
+
+// Small screenshots (often ones that were sent through a chat app) read better when enlarged first.
+async function readable(file) {
+  try {
+    const bmp = await createImageBitmap(file);
+    if (bmp.width >= 1000) { bmp.close(); return file; }
+    const scale = Math.min(2.5, 1600 / bmp.width);
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    const g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close();
+    return c;
+  } catch { return file; }
+}
+
+$('photos').addEventListener('change', async function () {
+  const files = [...this.files];
+  if (!files.length) return;
+  this.disabled = true;
+  $('inspect').hidden = false;
+  $('preview').replaceChildren();
+  $('raw').textContent = '';
+  for (const file of files) {
+    const img = make('img');
+    img.src = URL.createObjectURL(file);
+    img.alt = 'Screenshot ' + file.name;
+    img.onload = () => URL.revokeObjectURL(img.src);
+    $('preview').append(img);
+  }
+  let worker, shot = 0;
+  const found = { addresses: new Set(), stores: new Set(), customers: new Map() };
+  try {
+    $('scan').textContent = 'Getting the text reader ready…';
+    if (!window.Tesseract) await loadScript(TESSERACT.src, TESSERACT.integrity);
+    worker = await Tesseract.createWorker('eng', 1, {
+      logger: m => { if (m.status === 'recognizing text') $('scan').textContent = 'Reading screenshot ' + shot + ' of ' + files.length + '… ' + Math.round(m.progress * 100) + '%'; }
+    });
+    for (const file of files) {
+      shot++;
+      $('scan').textContent = 'Reading screenshot ' + shot + ' of ' + files.length + '…';
+      const { data } = await worker.recognize(await readable(file));
+      $('raw').textContent += data.text + '\n';
+      readScreenshotText(data.text, found);
+    }
+    if (!found.stores.size) {
+      const all = $('raw').textContent.replace(/\s+/g, ' ');
+      for (const store of KNOWN_STORES) if (store.name.test(all)) { found.stores.add(store.address); found.addresses.add(store.address); }
+    }
+    $('scan').textContent = applyFound(found, files.length);
+  } catch {
+    $('scan').textContent = navigator.onLine === false
+      ? 'You’re offline, so the text reader could not load. Type the addresses below.'
+      : 'The screenshots could not be read. Open them below and type the addresses.';
+  } finally {
+    this.disabled = false;
+    this.value = '';
+    if (worker) await worker.terminate().catch(() => {});
+  }
+});
+
+// Puts what was read into the form without wiping anything already typed.
+function applyFound(found, shots) {
+  const options = new Set([...$('choices').options].map(o => o.value));
+  for (const a of found.addresses) if (!options.has(a)) { const o = make('option'); o.value = a; $('choices').append(o); }
+
+  const pickup = rows[0], seen = $('seen-store');
+  seen.hidden = true;
+  if (found.stores.size === 1) {
+    const store = [...found.stores][0], current = pickup.address.value.trim();
+    if (!current || pickupSource !== 'typed') {
+      if (!sameText(current, store)) { pickup.address.value = store; setNote(pickup, '', ''); clearPlan(); }
+      pickupSource = 'screenshot';
+    } else if (!sameText(current, store)) {
+      seen.replaceChildren('The screenshot shows a different pickup: ' + store + ' ');
+      const use = make('button', 'btn quiet small', 'Use it');
+      use.type = 'button';
+      use.onclick = () => { pickup.address.value = store; pickupSource = 'screenshot'; seen.hidden = true; setNote(pickup, '', ''); clearPlan(); };
+      seen.append(use);
+      seen.hidden = false;
+    }
+  }
+
+  let added = 0;
+  for (const address of found.addresses) {
+    if (found.stores.has(address)) continue;
+    for (const name of found.customers.get(address) || ['']) {
+      const already = rows.slice(1).some(r => sameText(r.address.value, address) && (!name || sameText(r.name.value, name)));
+      if (already) continue;
+      const blank = rows.slice(1).find(r => !r.address.value.trim() && !r.name.value.trim());
+      if (blank) {
+        blank.address.value = address; blank.name.value = name;
+        blank.wrap.classList.toggle('suggested', !!name);
+        setNote(blank, '', '');
+      } else addRow('drop', address, name, true);
+      added++;
+    }
+  }
+  if (added) clearPlan();
+
+  const read = 'Read ' + shots + ' screenshot' + (shots === 1 ? '' : 's') + '. ';
+  if (!found.addresses.size) return read + 'No addresses were found. Type them below.';
+  let msg = read + (added ? 'Added ' + added + ' drop-off' + (added === 1 ? '' : 's') + '.' : 'No new drop-offs.') + ' Check each address and name below.';
+  if (found.stores.size > 1) msg += ' More than one store address was found, so pick the right one for the pickup.';
+  return msg;
+}
+
+/* ---------- Services ---------- */
+class ServiceError extends Error {}
+class LookupError extends Error { constructor(message, suggestions) { super(message); this.suggestions = suggestions; } }
+
+async function getJson(url, service, signal) {
+  const own = new AbortController();
+  const timer = setTimeout(() => own.abort(), TIMEOUT_MS);
+  const stop = () => own.abort();
+  if (signal) signal.addEventListener('abort', stop, { once: true });
+  try {
+    const r = await fetch(url, { signal: own.signal });
+    if (r.status === 429) throw new ServiceError(service + ' is busy right now. Wait a minute, then try again.');
+    if (!r.ok) throw new ServiceError(service + ' is not available right now. Try again in a moment.');
+    return await r.json();
+  } catch (err) {
+    if (err instanceof ServiceError) throw err;
+    throw new ServiceError(service + ' did not answer. Check your signal, then try again.');
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', stop);
+  }
+}
+
+async function geocode(text, signal) {
+  const key = text.toLowerCase();
+  if (geoCache.has(key)) return geoCache.get(key);
+  const url = new URL(GEOCODE_URL);
+  url.search = new URLSearchParams({ SingleLine: text, sourceCountry: 'USA', outFields: 'Addr_type', maxLocations: '5', f: 'json' });
+  const data = await getJson(url, 'Address lookup (Esri)', signal);
+  if (data.error) throw new ServiceError('Address lookup (Esri) turned the request down. Try again in a moment.');
+  const precise = c => ['PointAddress', 'StreetAddress', 'Subaddress', 'POI'].includes(c.attributes && c.attributes.Addr_type);
+  const all = data.candidates || [], top = all[0];
+  if (top && top.score >= MIN_SCORE && precise(top)) { geoCache.set(key, top); return top; }
+  const suggestions = [...new Set(all.filter(c => precise(c) && c.score >= 70).map(c => c.address))].filter(a => !sameText(a, text)).slice(0, 3);
+  throw new LookupError(suggestions.length ? 'Could not match this address exactly.' : 'Could not find this address. Check the street number, city and ZIP.', suggestions);
+}
+
+// Each request books the next free slot, so two are never sent within the same second.
+// `stillWanted` lets a request that was overtaken while it waited drop out without being sent.
+async function osrm(path, signal, stillWanted) {
+  const slot = Math.max(Date.now(), osrmLast + OSRM_GAP_MS);
+  osrmLast = slot;
+  if (slot > Date.now()) await sleep(slot - Date.now());
+  if (stillWanted && !stillWanted()) throw new ServiceError('overtaken');
+  const data = await getJson(OSRM_URL + path, 'Drive times (OSRM)', signal);
+  if (data.code !== 'Ok') throw new ServiceError('Drive times (OSRM) could not work out these stops. Check the addresses.');
+  return data;
+}
+
+/* ---------- Building the route ---------- */
+$('form').addEventListener('submit', e => { e.preventDefault(); build(); });
+
+async function build() {
+  clearPlan();
+  const id = run, pickup = rows[0];
+  const drops = rows.slice(1).filter(r => r.address.value.trim());
+  rows.forEach(r => setNote(r, '', ''));
+  if (!pickup.address.value.trim()) {
+    setNote(pickup, 'error', 'Enter the H-E-B you pick up from.');
+    setStatus('Add the pickup address first.', true);
+    pickup.address.focus();
+    return;
+  }
+  if (!drops.length) {
+    setStatus('Add at least one drop-off address.', true);
+    rows[1].address.focus();
+    return;
+  }
+  if (navigator.onLine === false) { setStatus('You’re offline. Connect, then find the order again.', true); return; }
+
+  controller = new AbortController();
+  const signal = controller.signal, used = [pickup, ...drops];
+  setBusy(true);
+  setStatus('Finding each address…');
+  try {
+    const results = await Promise.allSettled(used.map(r => geocode(r.address.value.trim(), signal)));
+    if (id !== run) return;
+    let bad = [], outage = null;
+    results.forEach((res, i) => {
+      if (res.status === 'fulfilled') setNote(used[i], 'ok', 'Found: ' + res.value.address);
+      else if (res.reason instanceof LookupError) { setNote(used[i], 'error', res.reason.message, res.reason.suggestions); bad.push(used[i]); }
+      else outage = res.reason;
+    });
+    if (outage) throw outage;
+    if (bad.length) {
+      setStatus(bad.length === 1 ? 'Fix the highlighted address, then find the order again.' : 'Fix the ' + bad.length + ' highlighted addresses, then find the order again.', true);
+      bad[0].address.focus();
+      return;
+    }
+
+    // Orders going to the same door become one stop.
+    const stops = [{ place: results[0].value, rows: [pickup] }];
+    drops.forEach((row, i) => {
+      const place = results[i + 1].value;
+      const twin = stops.slice(1).find(s => s.place.address === place.address && s.place.location.x === place.location.x && s.place.location.y === place.location.y);
+      if (twin) twin.rows.push(row); else stops.push({ place, rows: [row] });
+    });
+
+    setStatus('Working out drive times…');
+    const coords = stops.map(s => s.place.location.x.toFixed(6) + ',' + s.place.location.y.toFixed(6)).join(';');
+    const table = await osrm('/table/v1/driving/' + coords + '?annotations=duration', signal);
+    if (id !== run) return;
+    if (!Array.isArray(table.durations)) throw new ServiceError('Drive times (OSRM) sent nothing back. Try again.');
+    const matrix = table.durations.map(r => r.map(v => (v == null ? Infinity : v)));
+    const roundTrip = $('roundtrip').checked;
+    const best = quickestOrder(matrix, roundTrip, EXACT_LIMIT);
+    if (!best) { setStatus('No drivable route connects these stops. Check the addresses.', true); return; }
+
+    plan = { stops, matrix, roundTrip, order: best.order.slice(), best, done: new Set(), miles: null, line: null };
+    if ($('remember').checked) storageSet(pickup.address.value.trim());
+    setStatus('');
+    $('route').hidden = false;
+    renderPlan();
+    $('h-route').focus();
+    $('route').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    fetchLine(0);
+  } catch (err) {
+    if (id !== run) return;
+    setStatus(err instanceof ServiceError ? err.message : 'Something went wrong. Check your connection and try again.', true);
+  } finally {
+    if (id === run) setBusy(false);
+  }
+}
+
+/* ---------- Showing the route ---------- */
+function stopName(stop) {
+  const names = [...new Set(stop.rows.map(r => (r.name ? r.name.value.trim() : '')).filter(Boolean))];
+  return names.join(' + ');
+}
+const sameOrder = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+function nextIndex() {
+  for (let k = 1; k < plan.order.length; k++) if (plan.order[k] !== 0 && !plan.done.has(plan.order[k])) return k;
+  return -1;
+}
+
+function renderPlan() {
+  const { stops, matrix, order, roundTrip, best, done } = plan;
+  const count = stops.length - 1, time = tourTime(matrix, order);
+
+  $('sign-time').textContent = minutesText(time);
+  const bits = ['Driving time for ' + count + (count === 1 ? ' stop' : ' stops')];
+  if (plan.miles != null) bits.push(plan.miles.toFixed(1) + ' miles');
+  bits.push(roundTrip ? 'ending back at H-E-B' : 'ending at the last drop-off');
+  $('sign-sub').textContent = bits.join(', ') + '. Traffic and time at each door are extra.' + (best.exact ? '' : ' With this many stops the order is a close estimate, not a guaranteed quickest.');
+
+  const tweak = $('tweak');
+  if (sameOrder(order, best.order)) tweak.hidden = true;
+  else {
+    const extra = time - best.time;
+    tweak.replaceChildren(make('span', '', extra >= 30 ? 'Your order adds about ' + minutesText(extra) + '.' : 'Your order takes about the same time.'));
+    const undo = make('button', 'btn small', 'Use the quickest order');
+    undo.type = 'button';
+    undo.onclick = () => { plan.order = best.order.slice(); afterReorder(); };
+    tweak.append(undo);
+    tweak.hidden = false;
+  }
+
+  const next = nextIndex(), list = $('stops');
+  list.replaceChildren();
+  order.forEach((node, k) => {
+    const stop = stops[node], li = make('li');
+    if (node === 0) {
+      li.append(make('span', 'marker store', 'H'), make('p', 'stop-name', k === 0 ? 'Pick up at H-E-B' : 'Back to H-E-B'), make('p', 'stop-addr', stop.place.address));
+      if (k > 0) li.append(make('p', 'stop-leg', minutesText(matrix[order[k - 1]][0]) + ' drive'));
+    } else {
+      const name = stopName(stop) || 'Drop-off', isDone = done.has(node);
+      li.className = isDone ? 'is-done' : k === next ? 'is-next' : '';
+      const head = make('div', 'stop-head'), moves = make('span', 'moves');
+      head.append(make('p', 'stop-name', name), moves);
+      li.append(make('span', 'marker', String(k)), head, make('p', 'stop-addr', stop.place.address),
+        make('p', 'stop-leg', minutesText(matrix[order[k - 1]][node]) + ' drive from ' + (order[k - 1] === 0 ? 'H-E-B' : 'stop ' + (k - 1))
+          + (stop.rows.length > 1 ? '. ' + stop.rows.length + ' orders at this address.' : '')));
+      const actions = make('div', 'stop-actions');
+      const go = make('a', 'btn small' + (k === next ? '' : ' quiet'), 'Navigate');
+      go.href = mapsNavigateUrl(stop.place.address); go.target = '_blank'; go.rel = 'noopener';
+      go.setAttribute('aria-label', 'Navigate to stop ' + k + ', ' + name);
+      const tick = make('button', 'btn small quiet', isDone ? '✓ Delivered' : 'Mark delivered');
+      tick.type = 'button'; tick.setAttribute('aria-pressed', String(isDone));
+      tick.setAttribute('aria-label', (isDone ? 'Delivered: stop ' : 'Mark delivered: stop ') + k + ', ' + name);
+      tick.onclick = () => { isDone ? done.delete(node) : done.add(node); renderPlan(); refreshMap(); };
+      const up = make('button', 'btn small quiet move', '↑'), down = make('button', 'btn small quiet move', '↓');
+      up.type = down.type = 'button';
+      up.setAttribute('aria-label', 'Move ' + name + ' earlier'); down.setAttribute('aria-label', 'Move ' + name + ' later');
+      up.disabled = k <= 1; down.disabled = k >= count;
+      up.onclick = () => move(k, -1); down.onclick = () => move(k, 1);
+      moves.append(up, down);
+      actions.append(go, tick);
+      li.append(actions);
+    }
+    list.append(li);
+  });
+
+  renderLinks();
+
+  const bar = $('next');
+  $('build').hidden = true;
+  bar.hidden = false;
+  if (next > 0) {
+    const stop = stops[order[next]], name = stopName(stop);
+    bar.textContent = 'Navigate to stop ' + next + (name ? ', ' + name : '');
+    bar.href = mapsNavigateUrl(stop.place.address);
+  } else if (roundTrip) {
+    bar.textContent = 'All delivered. Navigate back to H-E-B';
+    bar.href = mapsNavigateUrl(stops[0].place.address);
+  } else {
+    bar.textContent = 'All stops delivered';
+    bar.removeAttribute('href');
+  }
+}
+
+function renderLinks() {
+  const { stops, order } = plan, addr = i => stops[i].place.address;
+  const between = order.length - 2, box = $('links');
+  box.replaceChildren();
+  plan.share = [];
+  const link = (label, nodes, quiet) => {
+    const a = make('a', 'btn' + (quiet ? ' quiet' : ''), label);
+    a.href = mapsRouteUrl(nodes.map(addr)); a.target = '_blank'; a.rel = 'noopener';
+    box.append(a);
+    return a.href;
+  };
+  if (between <= WAYPOINTS_PER_LINK) {
+    plan.share.push(link('Open the whole route', order));
+    $('links-note').textContent = 'Stops stay in this order. Customer names are not sent to Google.';
+  } else {
+    for (const leg of splitLegs(order, WAYPOINTS_PER_LINK)) {
+      const label = legLabel(order, leg);
+      plan.share.push(label + ': ' + link(label, leg.nodes));
+    }
+    let note = 'A phone browser keeps only ' + WAYPOINTS_PER_LINK + ' in-between stops per link, so the route is split. Open the next link when you finish the last stop of the one before.';
+    if (between <= WAYPOINTS_IN_APP) {
+      link('Whole route (Google Maps app only)', order, true);
+      note += ' The whole-route link works only when it opens in the Google Maps app.';
+    }
+    $('links-note').textContent = note + ' Customer names are not sent to Google.';
+  }
+}
+
+function move(k, by) {
+  const j = k + by, count = plan.stops.length - 1;
+  if (j < 1 || j > count) return;
+  const o = plan.order;
+  [o[k], o[j]] = [o[j], o[k]];
+  afterReorder();
+  const btn = $('stops').children[j] && $('stops').children[j].querySelector(by < 0 ? '.move' : '.move:last-child');
+  if (btn && !btn.disabled) btn.focus();
+}
+
+function afterReorder() {
+  plan.line = null; plan.miles = null;
+  renderPlan();
+  fetchLine(1200);
+}
+
+// Fetches the road line and distance for the current order. If it fails the route still works without it.
+function fetchLine(delay) {
+  clearTimeout(lineTimer);
+  const id = run, order = plan.order.slice();
+  lineTimer = setTimeout(async () => {
+    try {
+      const coords = order.map(i => plan.stops[i].place.location.x.toFixed(6) + ',' + plan.stops[i].place.location.y.toFixed(6)).join(';');
+      const current = () => id === run && plan && sameOrder(order, plan.order);
+      const data = await osrm('/route/v1/driving/' + coords + '?overview=full&geometries=geojson', controller && controller.signal, current);
+      if (!current()) return;
+      const r = data.routes && data.routes[0];
+      if (!r) return;
+      plan.miles = r.distance / 1609.344;
+      plan.line = r.geometry && r.geometry.coordinates.map(c => [c[1], c[0]]);
+      renderPlan();
+      refreshMap();
+    } catch { /* the map simply shows the stops without a line */ }
+  }, delay);
+  refreshMap();
+}
+
+function refreshMap() {
+  if (!plan || !window.L) return;
+  const { stops, order, done, roundTrip } = plan;
+  if (!map) {
+    map = L.map($('map'), { scrollWheelZoom: false });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Routes: <a href="https://project-osrm.org/">OSRM</a> | <a href="https://www.openstreetmap.org/fixthemap">Report a map issue</a>',
+      maxZoom: 19
+    }).addTo(map);
+    mapLayer = L.layerGroup().addTo(map);
+    const pts = stops.map(s => [s.place.location.y, s.place.location.x]);
+    map.fitBounds(pts, { padding: [60, 50], maxZoom: 16 });
+  }
+  mapLayer.clearLayers();
+  if (plan.line) L.polyline(plan.line, { color: '#075941', weight: 5, opacity: .75 }).addTo(mapLayer);
+  order.forEach((node, k) => {
+    if (node === 0 && k > 0) return;
+    const stop = stops[node], isDone = done.has(node);
+    const text = node === 0 ? (roundTrip ? 'H-E-B, start and finish' : 'H-E-B, start') : k + '. ' + (stopName(stop) || 'Drop-off');
+    const label = document.createElement('span'), detail = document.createElement('span');
+    label.textContent = text; detail.textContent = text + ', ' + stop.place.address;
+    L.circleMarker([stop.place.location.y, stop.place.location.x], { radius: node === 0 ? 9 : 7, color: isDone ? '#6C7C75' : '#075941', fillColor: node === 0 ? '#FFFFFF' : isDone ? '#6C7C75' : '#075941', fillOpacity: 1, weight: 3 })
+      .addTo(mapLayer).bindTooltip(label, { permanent: true, direction: 'top', className: isDone ? 'pin-done' : '' }).bindPopup(detail);
+  });
+}
+
+$('share').addEventListener('click', async function () {
+  if (!plan) return;
+  const text = plan.share.join('\n');
+  try {
+    if (navigator.share) await navigator.share({ title: 'Favor delivery route', text });
+    else { await navigator.clipboard.writeText(text); this.textContent = 'Copied'; setTimeout(() => { this.textContent = 'Copy route links'; }, 2000); }
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;
+    let field = $('share-text');
+    if (!field) { field = make('textarea'); field.id = 'share-text'; field.readOnly = true; field.rows = 4; field.style.width = '100%'; field.setAttribute('aria-label', 'Route links to copy'); this.parentNode.after(field); }
+    field.value = text; field.select();
+  }
+});
+
+/* ---------- Start-up ---------- */
+const pickupRow = addRow('pickup');
+addRow('drop');
+const remembered = storageGet();
+if (remembered) { pickupRow.address.value = remembered; pickupSource = 'memory'; }
+if (!navigator.share) $('share').textContent = 'Copy route links';
+
+$('add').addEventListener('click', () => { addRow('drop').name.focus(); clearPlan(); });
+$('clear').addEventListener('click', () => {
+  if (rows.slice(1).some(r => r.address.value.trim() || r.name.value.trim()) && !confirm('Clear every drop-off? The pickup stays.')) return;
+  while (rows.length > 1) rows.pop().wrap.remove();
+  addRow('drop');
+  $('choices').replaceChildren();
+  $('scan').textContent = '';
+  clearPlan();
+});
+$('roundtrip').addEventListener('change', clearPlan);
+
+const showOffline = () => { $('offline').hidden = navigator.onLine !== false; };
+addEventListener('online', showOffline);
+addEventListener('offline', showOffline);
+showOffline();
+})();
+</script>
+</body>
+</html>

@@ -19,6 +19,16 @@ Upload `index.html` and `README.md` to the root of the `main` branch, replacing 
 
 Two orders going to the same address become one stop.
 
+## iPhone Shortcut
+
+A Shortcut can skip the choose-screenshots step. It reads the screenshots on the phone and opens the planner with the text attached, like this:
+
+`https://YOUR-SITE-ADDRESS/#shots=TEXT`
+
+`TEXT` is the URL-encoded text of the screenshots, with `|||` between one screenshot and the next. The page then fills in the addresses and names, and finds the order straight away if it has a pickup and at least one drop-off. Each run is a fresh batch: it replaces the drop-offs already on the page and keeps the pickup.
+
+The text after `#` is not sent to the web server, and the page removes it from the address as soon as it loads. It can still be recorded in Safari's history on the phone.
+
 ## How the order is worked out
 
 Up to 15 drop-offs, every possible order is compared and the quickest is used. Above 15, the planner starts from nearest-stop routes and keeps improving them; the result is close but not guaranteed quickest, and the page says so. Times are ordinary driving speeds with no live traffic.
@@ -61,4 +71,4 @@ The page needs a connection for all of these, and none comes with a guarantee.
 
 ## Tested
 
-Checked in desktop Chromium at phone size with stand-ins for Esri, OSRM and the map tiles: reading light and dark sample screenshots with the real text reader, building, reordering, marking delivered, one-way routes, 18-stop batches, wrong addresses, a service outage, being offline, and the CDN being unreachable. Not yet checked: Safari on an iPhone, real Favor screenshots, and the live services. Run one real batch before relying on it.
+Checked in desktop Chromium at phone size with stand-ins for Esri, OSRM and the map tiles: reading light and dark sample screenshots with the real text reader, the Shortcut handover, building, reordering, marking delivered, one-way routes, 18-stop batches, wrong addresses, a service outage, being offline, and the CDN being unreachable. Not yet checked: Safari on an iPhone, real Favor screenshots, and the live services. Run one real batch before relying on it.

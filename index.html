@@ -635,10 +635,7 @@ $('photos').addEventListener('change', async function () {
       $('raw').textContent += data.text + '\n';
       readScreenshotText(data.text, found);
     }
-    if (!found.stores.size) {
-      const all = $('raw').textContent.replace(/\s+/g, ' ');
-      for (const store of KNOWN_STORES) if (store.name.test(all)) { found.stores.add(store.address); found.addresses.add(store.address); }
-    }
+    addKnownStores(found, $('raw').textContent);
     $('scan').textContent = applyFound(found, files.length);
   } catch {
     $('scan').textContent = navigator.onLine === false
@@ -650,6 +647,39 @@ $('photos').addEventListener('change', async function () {
     if (worker) await worker.terminate().catch(() => {});
   }
 });
+
+function addKnownStores(found, allText) {
+  if (found.stores.size) return;
+  const all = allText.replace(/\s+/g, ' ');
+  for (const store of KNOWN_STORES) if (store.name.test(all)) { found.stores.add(store.address); found.addresses.add(store.address); }
+}
+
+/* ---------- Text handed over by the iPhone Shortcut ---------- */
+// The Shortcut reads the screenshots on the phone and opens this page with "#shots=" followed by the text,
+// one screenshot per "|||". Anything after # stays on the phone (browsers never send it to the web server)
+// and it is taken out of the address straight away. Each handover is a fresh batch: old drop-offs are replaced.
+function takeHandoff() {
+  const m = location.hash.match(/^#shots=([\s\S]*)$/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  let text;
+  try { text = decodeURIComponent(m[1]); } catch { text = m[1]; }
+  const shots = text.split('|||').map(t => t.trim()).filter(Boolean);
+  clearPlan();
+  while (rows.length > 1) rows.pop().wrap.remove();
+  addRow('drop');
+  $('choices').replaceChildren();
+  $('preview').replaceChildren();
+  $('raw').textContent = shots.join('\n\n');
+  $('inspect').hidden = !shots.length;
+  if (!shots.length) { $('scan').textContent = 'The Shortcut sent no text. Take your screenshots first, then run it again.'; return; }
+  const found = { addresses: new Set(), stores: new Set(), customers: new Map() };
+  shots.forEach(t => readScreenshotText(t, found));
+  addKnownStores(found, text);
+  $('scan').textContent = applyFound(found, shots.length);
+  if (rows[0].address.value.trim() && rows.slice(1).some(r => r.address.value.trim())) build();
+  else if (found.addresses.size) $('scan').textContent += ' Add the H-E-B pickup, then find the order.';
+}
 
 // Puts what was read into the form without wiping anything already typed.
 function applyFound(found, shots) {
@@ -1030,6 +1060,9 @@ $('clear').addEventListener('click', () => {
   clearPlan();
 });
 $('roundtrip').addEventListener('change', clearPlan);
+
+addEventListener('hashchange', takeHandoff);
+takeHandoff();
 
 const showOffline = () => { $('offline').hidden = navigator.onLine !== false; };
 addEventListener('online', showOffline);
